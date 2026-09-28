@@ -1,0 +1,47 @@
+target_phrase:
+- stop robot
+model_name: stop_robot
+custom_negative_phrases:
+- stop
+- robottop robot
+- stop robber
+- stop it
+- robot stop
+n_samples: 2000
+n_samples_val: 1000
+tts_batch_size: 50
+piper_sample_generator_path: /content/piper-sample-generator
+augmentation_rounds: 1
+augmentation_batch_size: 16
+steps: 20000
+max_negative_weight: 1500
+target_accuracy: 0.7
+target_recall: 0.5
+target_false_positives_per_hour: 0.5
+batch_size: 128
+learning_rate: 0.0001
+model_type: dnn
+layer_dim: 128
+layer_size: 128
+n_blocks: 1
+model_input_shape:
+- 16
+- 96
+n_classes: 1
+batch_n_per_class:
+  adversarial_negative: 64
+  positive: 64
+background_paths: []
+background_paths_duplication_rate: []
+rir_paths:
+- /content/mit_rirs
+false_positive_validation_data_path: null
+feature_data_files: {}
+output_dir: /content/stop_robot_output
+tflite_export: false
+onnx_export: true
+positive_clips_train_dir: /content/stop_robot_output/stop_robot/positive_train
+positive_clips_test_dir: /content/stop_robot_output/stop_robot/positive_test
+negative_clips_train_dir: /content/stop_robot_output/stop_robot/negative_train
+negative_clips_test_dir: /content/stop_robot_output/stop_robot/negative_test
+feature_save_dir: /content/stop_robot_output/stop_robot

@@ -1,0 +1,30 @@
+# Python caches and local environments
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+venvs/
+
+# Runtime recordings and generated audio
+ForSocial Robots/test_audio/
+ForSocial Robots/*.wav
+
+# Large/generated training artifacts
+ForSocial Robots/models/**/data/
+ForSocial Robots/models/**/features/
+ForSocial Robots/models/**/training_data_v1/
+ForSocial Robots/models/**/*.npy
+ForSocial Robots/models/**/*.zip
+
+# Downloadable Piper voice binary; retain its JSON metadata
+ForSocial Robots/piper_voices/*.onnx
+
+# Editor and temporary backup files
+*.backup
+*.before_tab_fix
+*~
+
+# Independent repositories checked out locally
+ForSocial Robots/llm_based_speech_interaction/
+ForSocial Robots/tools/
