@@ -4,9 +4,10 @@ import json
 import os
 import subprocess
 import time
-import urllib.error
 import urllib.request
 import wave
+import urllib.error
+
 from collections import deque
 
 import numpy as np
@@ -25,12 +26,12 @@ PIPER_AUDIO_FILE = (
     "test_audio/piper_echo.wav"
 )
 
-GEMINI_MODELS = (
-    "gemini-3.1-flash-lite",
-    "gemini-3.5-flash-lite",
-    "gemini-3.8-flash",
+GEMINI_MODEL = "gemini-3.5-flash-lite"
+
+GEMINI_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/"
+    f"models/{GEMINI_MODEL}:generateContent"
 )
-GEMINI_RETRY_DELAYS = (1, 2, 4)
 
 SAMPLE_RATE = 16000
 CHANNELS = 6
@@ -79,63 +80,87 @@ def calculate_rms(raw_audio):
     )
 
 
-def generate_gemini_reply(text, urlopen=urllib.request.urlopen, sleep=time.sleep):
-    api_key = os.environ.get("GEMINI_API_KEY")
+def generate_gemini_reply(text):
+    api_key = os.environ.get(
+        "GEMINI_API_KEY"
+    )
+
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY is not set. Set it in the terminal before running.")
+        raise RuntimeError(
+            "GEMINI_API_KEY is not set. "
+            "Set it in the terminal before running."
+        )
 
     payload = {
-        "contents": [{"parts": [{"text": (
-            "Reply naturally in one short sentence. Keep the answer concise "
-            "for spoken robot interaction.\n\n" f"User: {text}"
-        )}]}],
-        "generationConfig": {"maxOutputTokens": 60},
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": (
+                            "Reply naturally in one short sentence. "
+                            "Keep the answer concise for spoken robot "
+                            "interaction.\n\n"
+                            f"User: {text}"
+                        )
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "maxOutputTokens": 60,
+        },
     }
-    last_error = None
 
-    for model_name in GEMINI_MODELS:
-        gemini_url = (
-            "https://generativelanguage.googleapis.com/v1beta/"
-            f"models/{model_name}:generateContent"
+    request = urllib.request.Request(
+        GEMINI_URL,
+        data=json.dumps(payload).encode(
+            "utf-8"
+        ),
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(
+        request,
+        timeout=60,
+    ) as response:
+        result = json.loads(
+            response.read().decode(
+                "utf-8"
+            )
         )
-        for attempt, delay in enumerate(GEMINI_RETRY_DELAYS, start=1):
-            request = urllib.request.Request(
-                gemini_url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
-                method="POST",
-            )
-            try:
-                with urlopen(request, timeout=60) as response:
-                    result = json.loads(response.read().decode("utf-8"))
-                candidates = result.get("candidates", [])
-                if not candidates:
-                    raise RuntimeError("Gemini returned no response candidates.")
-                parts = candidates[0].get("content", {}).get("parts", [])
-                reply = " ".join(
-                    part.get("text", "").strip()
-                    for part in parts if part.get("text")
-                ).strip()
-                if not reply:
-                    raise RuntimeError("Gemini returned an empty response.")
-                print(f"Gemini model used: {model_name}")
-                return reply
-            except urllib.error.HTTPError as error:
-                error_body = error.read().decode("utf-8", errors="replace")
-                last_error = f"Gemini {model_name} returned HTTP {error.code}: {error_body}"
-                if error.code not in {429, 500, 502, 503, 504}:
-                    raise RuntimeError(last_error) from error
-            except urllib.error.URLError as error:
-                last_error = f"Gemini network error: {error}"
 
-            print(
-                f"Temporary Gemini error (attempt {attempt}/"
-                f"{len(GEMINI_RETRY_DELAYS)}). Retrying in {delay}s..."
-            )
-            sleep(delay)
+    candidates = result.get(
+        "candidates",
+        [],
+    )
 
-    print(last_error)
-    return "Sorry, I cannot respond right now. Please try again."
+    if not candidates:
+        raise RuntimeError(
+            "Gemini returned no response candidates."
+        )
+
+    parts = (
+        candidates[0]
+        .get("content", {})
+        .get("parts", [])
+    )
+
+    reply = " ".join(
+        part.get("text", "").strip()
+        for part in parts
+        if part.get("text")
+    ).strip()
+
+    if not reply:
+        raise RuntimeError(
+            "Gemini returned an empty response."
+        )
+
+    return reply
 
 def main():
     print("Loading faster-whisper...")
