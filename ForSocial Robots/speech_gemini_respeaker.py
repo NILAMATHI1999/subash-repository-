@@ -14,15 +14,15 @@ import numpy as np
 from faster_whisper import WhisperModel
 
 
-AUDIO_FILE = "/home/subash/thesis-social-robot/test_audio/live_respeaker.wav"
+AUDIO_FILE = "/home/robot/subash-repository-/ForSocial Robots/test_audio/live_respeaker.wav"
 
 PIPER_MODEL = (
-    "/home/subash/thesis-social-robot/"
+    "/home/robot/subash-repository-/ForSocial Robots/"
     "piper_voices/en_US-lessac-medium.onnx"
 )
 
 PIPER_AUDIO_FILE = (
-    "/home/subash/thesis-social-robot/"
+    "/home/robot/subash-repository-/ForSocial Robots/"
     "test_audio/piper_echo.wav"
 )
 
@@ -32,6 +32,15 @@ GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/"
     f"models/{GEMINI_MODEL}:generateContent"
 )
+
+QWEN_URL = "http://127.0.0.1:11434/api/generate"
+QWEN_MODEL = "qwen2.5:1.5b"
+
+# Select with: export LLM_BACKEND=gemini or export LLM_BACKEND=qwen
+LLM_BACKEND = os.environ.get(
+    "LLM_BACKEND",
+    "gemini",
+).strip().lower()
 
 SAMPLE_RATE = 16000
 CHANNELS = 6
@@ -162,28 +171,80 @@ def generate_gemini_reply(text):
 
     return reply
 
+
+def generate_qwen_reply(text):
+    """Generate a short reply from a local Ollama/Qwen server."""
+    payload = {
+        "model": QWEN_MODEL,
+        "prompt": (
+            "Reply naturally in one short sentence. "
+            "Keep the answer concise for spoken robot interaction.\n\n"
+            f"User: {text}"
+        ),
+        "stream": False,
+        "keep_alive": "10m",
+        "options": {
+            "temperature": 0,
+            "num_predict": 40,
+        },
+    }
+
+    request = urllib.request.Request(
+        QWEN_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with urllib.request.urlopen(request, timeout=60) as response:
+        result = json.loads(response.read().decode("utf-8"))
+
+    reply = result.get("response", "").strip()
+    if not reply:
+        raise RuntimeError("Qwen/Ollama returned an empty response.")
+
+    return reply
+
+
+def generate_reply(text):
+    """Dispatch the conversation turn to the selected LLM backend."""
+    if LLM_BACKEND == "gemini":
+        return generate_gemini_reply(text)
+    elif LLM_BACKEND == "qwen":
+        return generate_qwen_reply(text)
+    else:
+        raise ValueError(
+            f"Unsupported LLM_BACKEND={LLM_BACKEND!r}. "
+            "Use 'gemini' or 'qwen'."
+        )
+
 def main():
     print("Loading faster-whisper...")
 
     model = WhisperModel(
         "base",
         device="cpu",
-        compute_type="int8",
+        compute_type="float32",
     )
 
     print("Model ready.")
 
-    if not os.environ.get(
-        "GEMINI_API_KEY"
-    ):
-        raise RuntimeError(
-            "GEMINI_API_KEY is not set."
+    if LLM_BACKEND == "gemini":
+        if not os.environ.get("GEMINI_API_KEY"):
+            raise RuntimeError(
+                "GEMINI_API_KEY is not set for the Gemini backend."
+            )
+        print("Gemini API selected. Internet connection required.")
+    elif LLM_BACKEND == "qwen":
+        print(
+            f"Local Qwen selected ({QWEN_MODEL}). "
+            "Ollama must be running."
         )
-
-    print(
-        "Gemini API selected. "
-        "Internet connection required."
-    )
+    else:
+        raise RuntimeError(
+            f"Unsupported LLM_BACKEND={LLM_BACKEND!r}. "
+            "Use 'gemini' or 'qwen'."
+        )
     print()
     print(
         "Continuous conversation started."
@@ -204,7 +265,7 @@ def main():
                 [
                     "arecord",
                     "-D",
-                    "hw:1,0",
+                    "hw:0,0",
                     "-f",
                     "S16_LE",
                     "-r",
@@ -574,23 +635,21 @@ def main():
                 break
 
             print(
-                "Generating Gemini reply..."
+                f"Generating {LLM_BACKEND} reply..."
             )
 
             llm_started = (
                 time.perf_counter()
             )
 
-            reply = generate_gemini_reply(
-                text
-            )
+            reply = generate_reply(text)
 
             llm_finished = (
                 time.perf_counter()
             )
 
             print(
-                "Gemini reply:",
+                f"{LLM_BACKEND.capitalize()} reply:",
                 reply,
             )
 
@@ -630,6 +689,8 @@ def main():
             subprocess.run(
                 [
                     "aplay",
+		    "-D",
+		    "plughw:0,0",
                     PIPER_AUDIO_FILE,
                 ],
                 check=True,
